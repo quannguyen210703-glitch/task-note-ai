@@ -1,0 +1,31 @@
+{
+  "version": "2.0.0",
+  "at_utc": "2026-10-15T07:13:12.008656+00:00",
+  "identifier": "vn.tasknoteai.desktop",
+  "installed_upgrade": false,
+  "user_choice": "Keep installed V1 running; deliver installer only",
+  "source_sha256": "33304668a701edf5a8ac2509360343870f84bfe388c18776f51b57d94f08a023",
+  "source_files": 75,
+  "artifacts": [
+    {
+      "file": "Task Note AI_2.0.0_x64-setup.exe",
+      "size_bytes": 9722808,
+      "sha256": "e3e7355aef1bd51e6eb6cc96b83bed822c7c51e3d22656691bd7bb145e1b0032"
+    },
+    {
+      "file": "tasknote.exe",
+      "size_bytes": 13882880,
+      "sha256": "2ba88bd9d9588f57faf7236f5f6fc0c1a88b1f969c101bc6aafbdd1f72308dfb"
+    },
+    {
+      "file": "task-note-ai.exe",
+      "size_bytes": 24786432,
+      "sha256": "efc329e3add041af95cce8c066bddabc9f3d18eaa92e5cf3e2a3361f10228a7b"
+    },
+    {
+      "file": "TaskNoteAI-2.0.0-source.zip",
+      "size_bytes": 266110,
+      "sha256": "beb46e1b1a5d1c8d7c2956df5410b04abd8ab189965d204614d42ceade9071a5"
+    }
+  ]
+}

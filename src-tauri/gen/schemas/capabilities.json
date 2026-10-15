@@ -1,0 +1,1 @@
+{"desktop":{"identifier":"desktop","description":"Hai cửa sổ nội bộ; backend xử lý dữ liệu và hệ thống","local":true,"windows":["sticky","dashboard"],"permissions":["core:default","core:window:allow-start-dragging"]}}

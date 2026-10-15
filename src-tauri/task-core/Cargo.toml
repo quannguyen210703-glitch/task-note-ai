@@ -1,0 +1,28 @@
+[package]
+name = "task-note-core"
+version = "2.0.0"
+edition = "2021"
+
+[dependencies]
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+iana-time-zone = "0.1"
+uuid = { version = "1", features = ["v4"] }
+regex = "1"
+deunicode = "1"
+tokio = { version = "1", features = ["io-util", "macros", "process", "rt-multi-thread", "time"] }
+thiserror = "2"
+fs2 = "0.4"
+clap = { version = "4.6", features = ["derive"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+keyring = { version = "3.6", features = ["windows-native"] }
+
+[[bin]]
+name = "tasknote"
+path = "src/cli.rs"
+
+[dev-dependencies]
+tempfile = "3"

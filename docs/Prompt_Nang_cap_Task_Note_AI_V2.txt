@@ -1,0 +1,628 @@
+PROMPT HOÀN CHỈNH — TỰ NÂNG CẤP TASK NOTE AI, CLI, XÓA VÀ BỎ TẠM HOÃN
+Cập nhật yêu cầu: 14/10/2026 — bổ sung nâng cấp tại chỗ, CLI và bảo toàn dữ liệu
+Prompt tự chứa cho phần nâng cấp, dùng cùng tài liệu V1 nếu còn trong repo. Đây là yêu cầu lập trình ứng dụng Windows thật; tệp này là đặc tả/prompt, chưa phải bản cài đặt.
+Ưu tiên yêu cầu mới ở mục 13–20 nếu tài liệu cũ khác: tự tìm source, cập nhật stable tương thích, thêm CLI và Bỏ tạm hoãn; nâng cấp phải bảo toàn dữ liệu đang dùng.
+
+1. MỤC TIÊU VÀ PHẠM VI
+
+Hãy nâng cấp Task Note AI để người dùng có thể:
+- Nhắn bằng tiếng Việt: “Hôm nay thêm việc hoàn thiện cẩm nang học bổng, gọi khách lúc 16h”.
+- AI hiểu ý, tách các việc, điền tiêu đề, mô tả, ngày, giờ nếu có, rồi lưu task thật vào SQLite.
+- Sticky Note, bảng quản lý và lịch nhắc hiển thị dữ liệu vừa lưu ngay lập tức.
+- Giao một mục tiêu lớn: “Hôm nay anh cần hoàn thiện cẩm nang học bổng, chia việc cho anh”.
+- AI tạo các bước cụ thể phù hợp với mục tiêu, giúp người dùng biết cần làm gì tiếp theo.
+- Khi bật “AI tự lập việc”, ứng dụng tạo kế hoạch theo các mục tiêu người dùng đã giao và giới hạn được cấu hình.
+
+Kiểm tra repository, AGENTS.md và tài liệu V1 trước khi sửa. Bảo toàn dữ liệu thật, thay đổi chưa commit, autostart, tray, Sticky Note, backup và lịch nhắc.
+Stack V1 đã chốt: Tauri v2 + Rust; React + TypeScript; SQLite; offline-first.
+Nâng cấp mã nguồn hiện có; tự tìm source theo mục 13. Nếu chưa tìm thấy source, bảo toàn app/dữ liệu và báo blocker, không tự tạo app trắng thay thế. Không tự nhận đã sửa/cài ứng dụng chỉ vì đã viết tài liệu hoặc UI demo.
+
+Tệp này cập nhật quy tắc V1 “mọi lệnh chat phải preview rồi xác nhận”:
+Lệnh THÊM VIỆC rõ ràng được tự lưu; không hỏi xác nhận lặp lại. Các thao tác chat AI thay đổi lịch/công việc cũ hoặc còn mơ hồ vẫn cần preview phù hợp. Thao tác trực tiếp qua UI/CLI với task ID rõ được thực hiện theo mục 16–17, không qua xác nhận AI lặp lại.
+Giữ các quy tắc V1 còn lại, đặc biệt nhắc 08:00–18:00 và không sửa ngày hẹn của task quá hạn.
+
+2. HÀNH VI CHAT VÀ THÔNG TIN ĐIỀN TỰ ĐỘNG
+
+Một yêu cầu có thể tạo nhiều task. Mỗi task cần có:
+- Tiêu đề ngắn, bắt đầu bằng hành động khi phù hợp.
+- Mô tả hoặc checklist lấy từ yêu cầu.
+- Ngày thực hiện; giờ nếu người dùng đã chỉ định.
+- Mức ưu tiên; mặc định “Bình thường” nếu người dùng không nói.
+- Trạng thái mặc định “Chưa làm”.
+- Dự án/mục tiêu nếu có căn cứ từ hội thoại hoặc dữ liệu thật.
+- Nguồn tạo: người dùng qua chat / AI chia nhỏ mục tiêu / AI lập kế hoạch.
+- Liên kết về yêu cầu và mục tiêu gốc để xem lại AI đã tạo việc từ đâu.
+
+Không tự bịa số điện thoại, tên khách, đường dẫn, số liệu, kết quả đã làm hoặc thông tin không được cung cấp.
+Không tự đánh dấu hoàn thành vì AI đã lập checklist.
+Câu hỏi, thảo luận, nội dung trích dẫn hoặc “anh đang nghĩ có nên làm X không” không phải lệnh tạo việc.
+Phân biệt “anh cần làm X” với “em soạn X giúp anh”. Câu thứ hai có thể yêu cầu AI hỗ trợ nội dung, không đồng nghĩa người dùng phải làm lại toàn bộ việc ấy.
+
+Sau khi lưu thành công, trả lời ngắn:
+“Đã thêm 2 việc vào hôm nay: Hoàn thiện cẩm nang học bổng; Gọi khách lúc 16:00.”
+Kèm các thẻ task có nút Xem / Chỉnh sửa / Hoàn tác.
+Chỉ nói “Đã thêm” sau khi transaction SQLite commit thành công.
+Nếu lỗi, nói rõ “Chưa lưu được”, giữ bản nhập và cho Thử lại.
+
+3. QUY TẮC NGÀY, GIỜ VÀ XỬ LÝ MƠ HỒ
+
+Múi giờ mặc định Asia/Ho_Chi_Minh, kế thừa cấu hình V1.
+Rust cung cấp thời điểm nhận yêu cầu, múi giờ, ngày đang xem và dữ liệu task thật cho tầng hiểu lệnh. Không dùng ngày mà mô hình tự suy đoán.
+
+- “Hôm nay”: ngày tại thời điểm người dùng gửi yêu cầu.
+- “Ngày mai”: ngày tiếp theo trong múi giờ ứng dụng.
+- Ngày cụ thể: dùng đúng ngày người dùng chỉ định.
+- Lệnh thêm việc thiếu ngày: mặc định hôm nay, hiển thị rõ ngày đã chọn trong phản hồi.
+- Thiếu giờ: tạo việc cả ngày, không tự gán một giờ cố định.
+- “Vào ngày đang xem”: dùng ngày đang xem nếu câu nói chỉ rõ ý đó.
+- Ngày đang xem khác hôm nay không được âm thầm thay đổi mặc định của chat.
+- “Chiều mai”: ngày mai, nhãn buổi chiều; không tự biến thành deadline 14:00. Khi bật lập kế hoạch có thể đề xuất một giờ làm, ghi rõ là giờ gợi ý.
+- “Thứ Sáu”, “tuần sau”, “làm việc này”, “dời cái đó”: hỏi một câu gọn nếu chưa đủ căn cứ xác định ngày hoặc task.
+- Ngày/giờ đã qua: không tự đẩy sang ngày mai. Hiển thị thời điểm đã qua và hỏi muốn giữ hay chọn lại.
+- Thời điểm 19:00: được lưu nếu người dùng chỉ định, đồng thời nhãn “Ngoài giờ nhắc”. Không tự chuyển thành 18:00 hoặc gửi toast sau 18:00.
+- “Thêm một việc nữa” kế thừa ngày từ lượt tạo việc liền trước khi ngữ cảnh rõ; phản hồi vẫn ghi ngày cụ thể.
+
+Một batch có yêu cầu mơ hồ chưa thể lưu thì trình bày những phần đã hiểu và hỏi thông tin còn thiếu; chưa tự lưu một phần rồi báo như thể cả batch đã hoàn thành.
+Ghi nhớ dữ liệu batch đang chờ để người dùng chỉ cần trả lời phần thiếu.
+Nếu yêu cầu đi qua nửa đêm, ngày đã phân giải vẫn dựa trên thời điểm gửi yêu cầu; retry không thay đổi ngày.
+Không diễn giải quá mức ý định chỉ bằng một điểm confidence do mô hình tự báo.
+
+4. AI TỰ GIAO VIỆC THEO MỤC TIÊU
+
+Tách hai tính năng rõ ràng trong giao diện:
+
+A. “Thêm việc bằng chat”
+Luôn sẵn sàng. Lệnh rõ ràng tự ghi task, không cần bật chế độ lập kế hoạch.
+
+B. “AI tự lập việc”
+Mặc định tắt, có nút bật trong Cài đặt và trên tab Trợ lý.
+Khi người dùng bật, giải thích ngắn: AI được phép thêm các bước nằm trong mục tiêu đã giao, theo ngày và giới hạn đã chọn.
+Đây là quyền thêm việc trong ứng dụng, không phải quyền tự xóa, đổi lịch hẹn, gửi tin nhắn hoặc thao tác phần mềm khác.
+Tắt chế độ chỉ dừng các lần tự sinh việc tiếp theo; giữ nguyên task đã lưu.
+
+Ngay cả khi B đang tắt, câu rõ ràng “chia thành việc và thêm vào hôm nay” đã cho phép tạo batch bước nhỏ trong phạm vi yêu cầu đó.
+Câu “gợi ý việc cần làm” tạo bản đề xuất và nút Thêm vào lịch; chưa tự lưu.
+Câu “tự lập việc cho anh mỗi ngày theo mục tiêu này” cho phép thiết lập phạm vi mục tiêu và bật lịch tương ứng; hiện thẻ tóm tắt phạm vi vừa thiết lập, cho chỉnh sửa hoặc tắt.
+
+Mỗi mục tiêu lưu:
+- Tên, mô tả, kết quả mong muốn.
+- Ngày bắt đầu, hạn cuối nếu người dùng cung cấp.
+- Các ngày được phép lập kế hoạch, theo lựa chọn người dùng hoặc lịch làm việc sẵn có.
+- Quyền tự thêm bước; giới hạn số task mới/ngày.
+- Trạng thái: hoạt động / tạm dừng / hoàn thành.
+- Những thông tin còn thiếu hoặc điều kiện phụ thuộc.
+
+Mặc định tối đa 3 việc AI mới mỗi ngày trên toàn bộ mục tiêu; người dùng đổi được.
+Chia mục tiêu thành 3–5 bước trong một kế hoạch, sau đó chỉ đưa vào hôm nay số bước phù hợp giới hạn và sức chứa của ngày.
+Khi người dùng yêu cầu trực tiếp thêm 5 việc cụ thể, không cắt mất 2 việc vì giới hạn tự sinh. Giới hạn chỉ áp dụng cho tác vụ chủ động của AI; phản ánh đầy đủ batch người dùng đã giao.
+Một lần chia nhỏ được yêu cầu rõ cũng được tạo đủ batch có thể xem lại; cảnh báo lịch dày nếu cần.
+
+Không có mục tiêu đang hoạt động thì không tự bịa việc mới.
+Giữ liên kết parent/child để tránh tạo một mục tiêu lớn và nhiều việc con rồi đếm trùng khối lượng.
+Việc phụ thuộc chỉ được đề xuất “Làm tiếp” sau khi điều kiện tiên quyết đã hoàn thành hoặc người dùng cho phép bỏ qua.
+Người dùng chỉnh/xóa một bước AI phải được tôn trọng; lưu dấu đã loại để AI không tái tạo cùng bước ở lần chạy sau.
+Mục tiêu hoàn thành/tạm dừng thì ngừng sinh bước mới. Không tự xóa việc còn tồn thuộc mục tiêu.
+
+Ví dụ mục tiêu “Hoàn thiện cẩm nang học bổng” có thể tạo:
+1) Kiểm tra nội dung cần giữ nguyên.
+2) Bổ sung ảnh quốc gia và logo đúng vị trí.
+3) Kiểm tra bố cục và xuất PDF.
+Đây là ví dụ dữ liệu demo, không được tự nạp vào task thật của người dùng.
+Không thêm các bước “nghiên cứu lại học bổng” nếu mục tiêu yêu cầu giữ nguyên thông tin.
+
+5. LẬP KẾ HOẠCH VÀ GỢI Ý VIỆC TIẾP THEO
+
+Giữ deadline gốc của người dùng. Phân biệt:
+- Deadline: hạn phải xong.
+- Giờ dự kiến làm: slot do người dùng đặt hoặc AI gợi ý.
+- Thời lượng ước tính: số phút, có nhãn “AI ước tính” khi do AI tạo.
+
+Nếu V1 chỉ có due_at_utc, thêm trường kế hoạch hoặc bảng lịch phù hợp qua migration; không đổi nghĩa trường cũ.
+Task cả ngày cần ngày local + timezone hoặc cấu trúc tương đương; tránh đổi ngày khi chuyển UTC.
+
+Xếp gợi ý theo hạn, ưu tiên, phụ thuộc và thời gian còn trống.
+Không áp đặt giờ bắt đầu cố định cho task không có giờ. Chỉ tự đặt giờ dự kiến khi người dùng bật quyền xếp lịch cho mục tiêu.
+Khoảng giờ được gợi ý mặc định 08:00–18:00, kế thừa cài đặt lịch làm việc.
+Không tự di chuyển một cuộc hẹn hoặc giờ người dùng đã chốt.
+Nếu quá tải/trùng lịch, hiển thị vấn đề và đề xuất lựa chọn. Không âm thầm dời sang ngày khác.
+Những thời lượng do AI ước tính phải sửa được; không coi task cả ngày là chiếm đủ 10 giờ.
+Nếu không đủ thời gian, để việc còn lại trong danh sách bước của mục tiêu hoặc bản đề xuất, không tự đổi deadline.
+
+Sticky Note có “Việc nên làm tiếp” tối đa 3 task đã lưu, kèm lý do ngắn như “Sắp đến hạn” hoặc “Bước tiếp theo của cẩm nang”.
+AI gợi ý khác chưa lưu nằm riêng trong vùng “Đề xuất”, không tăng số task chưa làm.
+Số lượng, trạng thái và tiến độ đều tính từ SQLite, không lấy số do LLM kể lại.
+
+6. CHỦ ĐỘNG MỖI NGÀY VÀ KHUNG NHẮC V1
+
+Khi có quyền B và mục tiêu hoạt động:
+- Lập kế hoạch một lần lúc app hoạt động trong khung làm việc đầu ngày; nếu đang chạy lúc 08:00 thì dùng mốc đó.
+- Nếu máy mở muộn, đối soát một lần và chỉ dùng thời gian còn lại; không tạo một lịch làm việc đã qua.
+- Nếu app mở sau 18:00, có thể hiển thị task và nhận lệnh chat; không tự tạo kế hoạch làm hôm nay theo lịch chủ động. Chờ ngày làm việc kế tiếp theo cấu hình.
+- Ngày nghỉ giữ theo lịch làm việc đã có; không tự giả định thêm lịch cuối tuần hoặc loại ngày của người dùng.
+- Có nút “Lập lại kế hoạch”. Nút này tạo đề xuất mới, không xóa/nhân đôi task đã lưu hoặc sửa lịch cố định.
+
+Khóa chống trùng dựa trên ngày local, mục tiêu và bước/phiên bản kế hoạch; lưu trạng thái bền trong SQLite.
+Chạy lại app, thức máy hoặc mở hai cửa sổ không làm tạo hai kế hoạch.
+Bảo đảm một tiến trình lập kế hoạch/ghi task; Rust quản lý, không phụ thuộc tab chat đang mở.
+Nếu API hỏng, không đánh dấu kế hoạch đã thành công. Retry có giới hạn, có khóa request và trạng thái để không spam hoặc tạo trùng.
+
+Giữ lịch thông báo 08:00–18:00, bao gồm mốc 18:00:
+- 08:00 tóm tắt đầu ngày.
+- 09:00–17:00 nhắc đầu giờ với dữ liệu task mới nhất.
+- 18:00 tổng kết ngày.
+- Giữ các toggle V1 về nhắc trước hạn/đúng hạn, âm thanh và tạm tắt.
+Task vừa thêm tự tham gia lịch nhắc phù hợp.
+Gộp thông báo trùng mốc, không thêm một chuỗi toast riêng cho AI.
+Máy tắt/ngủ không thực hiện AI hoặc thông báo; resume đối soát một lần, không bắn bù hàng loạt.
+Task quá hạn vẫn giữ ngày gốc, xuất hiện ở “Quá hạn”; AI chỉ đề xuất xử lý lại, không tự đổi hạn.
+
+7. AI HỖ TRỢ NỘI DUNG CÔNG VIỆC
+
+Khi yêu cầu “soạn checklist”, “viết nháp”, “tóm tắt yêu cầu”, AI có thể tạo nội dung hỗ trợ trong cửa sổ chat và gắn vào task theo yêu cầu người dùng.
+Phân biệt rõ:
+- “Đã tạo việc”: đã lưu task.
+- “Đã soạn bản nháp”: đã tạo nội dung.
+- “Đã hoàn thành”: người dùng xác nhận công việc đã xong.
+Không tuyên bố đã gọi khách, kiểm tra PDF, sửa tài liệu, gửi email hoặc làm việc trong ứng dụng khác nếu chưa có công cụ và bằng chứng.
+Tính năng tự điều khiển máy tính, sửa file, gửi email/Zalo và kết nối tài khoản bên ngoài chưa nằm trong lần nâng cấp này.
+
+8. TÍCH HỢP MÔ HÌNH AI THẬT VÀ CHẾ ĐỘ OFFLINE
+
+Tận dụng OptionalCloudAIProvider của V1 nếu đã có; adapter phải gọi mô hình thật khi chế độ AI online được cấu hình và bật.
+Kiểm tra tài liệu chính thức và API/SDK đang dùng trước khi triển khai; không gắn cứng model, giá hoặc phiên bản SDK chỉ từ trí nhớ.
+Provider và model cấu hình được. Ưu tiên tương thích adapter hiện có, không đổi nền tảng chỉ để nâng cấp chat.
+Không yêu cầu tự xây thêm server nếu ứng dụng desktop có thể gọi an toàn từ Rust bằng khóa riêng do người dùng cấu hình.
+Khóa lưu trong kho bí mật hệ điều hành; không nhúng vào mã nguồn, bundle frontend, SQLite, localStorage hay log.
+
+Màn hình Cài đặt AI:
+- Chọn provider/model theo adapter được hỗ trợ.
+- Nhập/thay/xóa khóa; nút kiểm tra kết nối.
+- Bật gửi nội dung yêu cầu và dữ liệu task liên quan để AI xử lý.
+- Trạng thái rõ: Chưa cấu hình / Online / Offline / Lỗi kết nối.
+- Giải thích API có thể tính phí theo nhà cung cấp; không bịa giá hoặc hứa miễn phí.
+- Giới hạn lượt gọi chủ động/ngày và nút ngừng AI chủ động.
+
+Chỉ gửi phần dữ liệu cần cho yêu cầu: câu lệnh, mục tiêu liên quan và các task cần tra cứu; không gửi toàn bộ database mặc định.
+Không đọc file, email hoặc lịch ngoài ứng dụng nếu chưa có yêu cầu tích hợp riêng.
+Nội dung mô tả task là dữ liệu, không phải instruction cho phép AI mở rộng quyền.
+
+Khi thiếu mạng/khóa hoặc hết hạn mức:
+- V1 quản lý task và thông báo tiếp tục hoạt động.
+- Parser offline xử lý các lệnh đơn giản chắc chắn; dùng cùng quy tắc lưu tự động ở mục 2–3.
+- Lệnh cần suy luận/phân chia mục tiêu hiển thị “Cần kết nối AI”; giữ yêu cầu để thử lại.
+- Không gọi parser là mô hình AI suy luận, không tạo kết quả giả để báo đã có AI.
+- Lệnh đang chờ không được âm thầm thực thi muộn sau khi mạng trở lại nếu ngày/ngữ cảnh đã thay đổi; trình lại bản dự kiến khi người dùng chọn thử lại.
+
+9. KIẾN TRÚC THỰC THI VÀ TÍNH TOÀN VẸN
+
+Luồng: chat -> hiểu ý và phân giải thời gian -> cấu trúc action -> kiểm tra/quyền -> transaction SQLite -> sự kiện đồng bộ UI -> phản hồi đã lưu.
+
+Mô hình chỉ trả action cấu trúc đã được schema kiểm tra, ví dụ:
+create_tasks / propose_goal_steps / query_tasks / propose_update / draft_content / clarify.
+Không cho mô hình thực thi SQL, shell, truy cập filesystem hoặc bỏ qua lớp kiểm tra.
+Các trường giới hạn độ dài, enum, ngày/giờ, ID task, scope mục tiêu và quyền thao tác phải được Rust xác minh.
+ID task sửa/xóa phải tồn tại, được lấy từ dữ liệu app; nhiều task trùng tên thì hỏi chọn.
+Chỉ tạo mutation sau khi hiểu đủ và thỏa quyền; câu trả lời mô hình tự nhận “đã lưu” không có giá trị như commit.
+
+Có request_id ổn định từ lúc người dùng gửi. Retry do timeout không sinh thêm batch.
+Giống nội dung + cùng ngày chỉ là tín hiệu cảnh báo trùng; phân biệt retry với yêu cầu chủ ý “thêm một việc nữa giống vậy”.
+Với việc đã tồn tại giống hệt, hỏi ngắn có muốn thêm bản nữa; không tạo trùng âm thầm và không tự gộp những việc khác nhau chỉ vì gần giống tên.
+Batch mới được commit nguyên tử. Nếu commit thất bại, không báo thành công một phần.
+
+Mutation cũ:
+- Với lệnh chat AI đổi ngày/giờ, xóa và hoàn thành: hiển thị bản dự kiến để xác nhận; thao tác UI/CLI trực tiếp có task ID rõ dùng quy tắc mục 16–17.
+- “Dời việc X”: không đoán task khi có nhiều kết quả.
+- Hoàn tác batch tạo mới: thao tác ở app, có thông tin số việc; không xóa task đã được sửa/hoàn thành về sau một cách mù quáng.
+- Dùng soft delete/lịch sử sự kiện và version check khi phù hợp. Bảo toàn tham chiếu mục tiêu.
+
+Tái sử dụng repository và scheduler hiện có.
+Migrations thêm goal, plan, provenance, request/idempotency, lịch sử và trường lịch cần thiết phải có backup và kiểm thử dữ liệu V1.
+Không mở timer AI độc lập cho mỗi cửa sổ.
+Không gọi LLM ở mỗi hourly toast; lấy kế hoạch đã lưu và dữ liệu mới nhất.
+Log kỹ thuật che khóa và dữ liệu nhạy cảm.
+
+10. UI CẦN BÀN GIAO
+
+Sticky Note:
+- Ô nhập nhanh: “Thêm việc hôm nay hoặc nhắn yêu cầu…”.
+- Tiến độ hôm nay, việc quá hạn, việc nên làm tiếp.
+- Thẻ đã lưu có nguồn AI khi phù hợp.
+- Nút Hoàn thành / Chỉnh sửa / Mở trợ lý.
+
+Tab Trợ lý:
+- Hội thoại tiếng Việt và thẻ thao tác thật.
+- Tách rõ “Đã thêm” và “Đề xuất”.
+- Nút “Lập kế hoạch hôm nay”, “Xem mục tiêu”.
+- Trạng thái đang hiểu / đang lưu / lỗi, có Thử lại.
+- Hiển thị ngày cụ thể cho task vừa thêm để người dùng kiểm tra ngay.
+
+Mục tiêu:
+- Tạo/chỉnh/tạm dừng mục tiêu.
+- Theo dõi các bước đã tạo, đề xuất và đã xong.
+- Quyền AI tự thêm bước theo từng mục tiêu.
+- Giới hạn toàn cục mặc định 3 việc/ngày; có thể điều chỉnh.
+
+Bảo đảm chat, Sticky Note và dashboard phản ánh cùng dữ liệu qua Rust events sau commit.
+UI dùng được khi mạng chậm hoặc mất kết nối; không khóa CRUD thủ công và scheduler.
+
+11. CA NGHIỆM THU CÓ Ý NGHĨA
+
+Dùng clock giả và múi giờ cố định khi kiểm thử logic; không hardcode “hôm nay” trong sản phẩm.
+Ngày giả định cho các ví dụ dưới là 14/10/2026, giờ 10:00 tại Việt Nam.
+
+1) “Thêm việc kiểm tra cẩm nang hôm nay”:
+Một task ngày 14/10, cả ngày, ưu tiên bình thường; lưu tự động; note cập nhật; restart vẫn còn.
+
+2) “Mai 9h gọi khách hàng”:
+Ngày 15/10 lúc 09:00; không lưu nhầm vào ngày đang xem.
+
+3) “Hôm nay kiểm tra logo, 16h gọi khách, ngày mai gửi báo cáo”:
+Ba task đúng ngày và giờ, một transaction; phản hồi đúng số lượng.
+
+4) “Chiều mai kiểm tra bố cục”:
+Ngày 15/10, nhãn buổi chiều, chưa có deadline giờ cố định.
+
+5) “Thêm việc họp vào thứ Sáu” khi chưa rõ ngày:
+Hỏi ngày cụ thể; chưa ghi task. Trả lời bổ sung tiếp tục đúng batch.
+
+6) “Anh đang cân nhắc có nên sửa cẩm nang không”:
+Không tạo việc.
+
+7) “Chia việc hoàn thiện cẩm nang và thêm vào hôm nay; giữ nguyên nội dung”:
+Các bước nằm trong mục tiêu, tôn trọng giữ chữ, có provenance; không sinh thêm bước nghiên cứu lại nội dung.
+
+8) “Gợi ý việc hoàn thiện cẩm nang”:
+Có đề xuất, chưa tăng tổng task; bấm Thêm vào lịch mới lưu.
+
+9) Bật AI tự lập việc với mục tiêu hợp lệ:
+Tự thêm tối đa 3 việc mới/ngày. Restart/resume/lập lại kế hoạch không sinh bản trùng.
+Task người dùng xóa hoặc bác bỏ không được tái tạo.
+
+10) Bật AI tự lập việc khi không có mục tiêu:
+Không bịa việc. Hướng dẫn tạo mục tiêu.
+
+11) Chat “thêm 5 việc”:
+Lưu đủ 5 việc rõ ràng; không áp giới hạn 3 việc tự sinh vào lệnh trực tiếp.
+
+12) Lịch có hẹn 14:00–15:00:
+AI không chen slot kế hoạch vào khoảng đó hoặc dời hẹn; thiếu sức chứa thì đưa đề xuất rõ.
+
+13) Deadline/giờ đã qua, ngoài khung 19:00, app mở sau 18:00:
+Đúng quy tắc mục 3 và 6; không tự chuyển ngày/giờ và không có toast sau 18:00.
+
+14) Mất mạng, thiếu khóa, API timeout hoặc JSON sai schema:
+Không ghi sai hoặc báo thành công giả; CRUD/scheduler vẫn chạy; retry không sinh trùng.
+
+15) Chọn task trùng tên để sửa, lịch bị đổi trong lúc LLM trả kết quả:
+Kiểm tra lại ID/version, không sửa nhầm; xử lý xung đột rõ.
+
+16) AI trả thao tác SQL/shell, task ID không tồn tại hoặc instruction trong mô tả:
+Backend từ chối; không mở rộng quyền.
+
+17) “Em viết nháp checklist giúp anh”:
+Có bản nháp; không tự nhận công việc đã hoàn thành.
+
+18) Batch commit lỗi và Hoàn tác sau khi có chỉnh sửa khác:
+Không thành công một phần; không làm mất chỉnh sửa mới.
+
+19) Migration từ DB V1 có task quá hạn và lịch lặp:
+Không mất task, không đổi hạn, không tạo lặp trùng; backup/import tương thích schema mới.
+
+20) Bản cài Windows:
+Thử chat -> SQLite -> Sticky Note -> thông báo thực; tray, autostart, restart và sleep/resume vẫn hoạt động.
+Phải ghi riêng những kiểm tra Windows/AI thực chưa thể chạy; không dùng mock để chứng minh kết nối AI thật hoặc toast thật.
+
+12. CÁCH TRIỂN KHAI VÀ BÀN GIAO
+
+Thực hiện tuần tự theo phụ thuộc:
+A) Kiểm tra code V1, môi trường, Git; lập migration và luồng action thống nhất.
+B) Thêm chat tự ghi với parser offline + idempotency + phản hồi sau commit.
+C) Tích hợp provider AI thật, schema validation, cấu hình khóa và xử lý lỗi.
+D) Thêm mục tiêu, chia bước, giới hạn tự sinh và kế hoạch bền qua restart.
+E) Đồng bộ Sticky Note/dashboard, giữ scheduler và bổ sung UI.
+F) Chạy kiểm thử phù hợp, sửa lỗi, build và thử bản cài Windows khi môi trường cho phép.
+
+Bàn giao:
+- Mã nguồn nâng cấp trong repository hiện có.
+- Migration, README tiếng Việt và hướng dẫn bật AI.
+- Báo cáo ca pass/fail/blocked, phân biệt kiểm thử mô phỏng với provider/Windows thật.
+- Bản cài .exe khi đã build được trên Windows; nêu đúng blocker nếu chưa build được.
+- Hướng dẫn bảo toàn/sao lưu dữ liệu V1 và quay lại khi nâng cấp lỗi.
+
+Không dừng ở kế hoạch, giả lập AI hoặc nút bấm không có tác dụng.
+Không tự thêm tích hợp tài khoản bên ngoài vào phạm vi.
+Nếu chưa có khóa API, hoàn thiện adapter, UI cấu hình và các chức năng không phụ thuộc khóa; báo kết nối AI thật còn chờ cấu hình, không che bằng kết quả demo.
+
+Các mục 13–20 dưới đây bổ sung yêu cầu mới và quy trình triển khai nâng cấp tại chỗ.
+
+13. TỰ TÌM THƯ MỤC VÀ SỬA ỨNG DỤNG HIỆN CÓ
+
+Người dùng giao quyền kiểm tra và nâng cấp dự án Task Note AI trong các thư mục môi trường hiện tại đã cho phép truy cập. Chủ động làm, không dừng ở “tôi có thể” hoặc chỉ liệt kê hướng dẫn cho người dùng làm.
+Quyền này không mở rộng sandbox/quyền hệ điều hành. Nếu một đường dẫn bị chặn, nêu đúng đường dẫn và thao tác bị chặn; tiếp tục các phần khác có thể làm. Không bỏ qua cơ chế quyền, không mặc định quét hoặc sửa mọi ổ đĩa.
+
+Tìm theo thứ tự:
+A) Thư mục làm việc đang mở; đọc AGENTS.md áp dụng ở thư mục cha và dưới thư mục dự án.
+B) Cấu hình workspace/README/build scripts/metadata có tham chiếu dự án, không đọc kho credential hoặc lịch sử cá nhân.
+C) Nếu chưa thấy, tìm có giới hạn theo tên Task Note AI/task-note/tasknote trong Documents, Desktop, Downloads và thư mục dự án mà môi trường cho phép; dùng Windows Known Folders vì Documents có thể nằm trong OneDrive.
+D) Kiểm tra tiến trình Task Note AI đang chạy nếu có quyền; lấy executable path, phiên bản, app identifier và thông tin cần xác định bản đang dùng. File .exe đã cài không đồng nghĩa thư mục đó chứa source.
+
+Dấu hiệu source: package.json, src-tauri/tauri.conf.json, Cargo.toml, frontend, migrations, lockfiles. Loại node_modules, target, dist, .git khi tìm.
+Đối chiếu app identifier/version/build metadata với bản đang chạy để chọn đúng repo; không chọn một bản backup hoặc demo chỉ vì tên gần giống.
+Nếu có đúng một source phù hợp, chuyển working directory các lệnh vào đó và tiếp tục. Ghi đường dẫn đã xác minh trong báo cáo.
+Nếu nhiều source không thể phân biệt, hỏi duy nhất câu chọn đường dẫn cùng các ứng viên cụ thể; không sửa bừa.
+Nếu chỉ có bản cài và không tìm thấy source, giữ nguyên app/dữ liệu, báo cần repository/source. Không giải quyết bằng cách tạo app trắng cùng tên hoặc giả nhận đã nâng cấp source cũ.
+Không cần người dùng upload code vào cuộc chat nếu Codex đang chạy trên máy Windows và đã đọc được source thật.
+
+Ghi PROJECT_DISCOVERY.md: source root, installed exe, phiên bản hiện tại, identifier, data root, DB đang dùng, cơ sở lựa chọn. Không ghi khóa API.
+Kiểm tra Git status/diff; giữ thay đổi đang có. Dùng nhánh/worktree hoặc bản sao source có checkpoint nếu hợp lý. Không git reset --hard, git clean hoặc ghi đè thay đổi của người dùng.
+Không đổi stack chỉ vì tài liệu V1 đề xuất Tauri nếu source thực tế dùng stack khác và đã có dữ liệu thật. Ưu tiên kiến trúc hiện hữu; mô tả điều chỉnh tương thích.
+
+14. NÂNG LÊN PHIÊN BẢN ỔN ĐỊNH MỚI NHẤT PHÙ HỢP
+
+“Bản cao nhất hiện tại” nghĩa là hoàn thiện các tính năng trong prompt và cập nhật nền tảng/phụ thuộc lên bản stable mới nhất có thể chạy tương thích; không tự chọn alpha/beta/nightly.
+Không coi nhãn V2 trong tài liệu là bằng chứng đây là phiên bản mới nhất đã tồn tại.
+
+Lập VERSION_AUDIT.md trước khi đổi dependency:
+- Phiên bản app, Tauri/runtime/plugin, Rust, Node/package manager, React/TypeScript, thư viện SQLite, CLI và SDK AI đang dùng.
+- Phiên bản stable mới nhất, nguồn chính thức và thời điểm kiểm tra thực tế.
+- Phiên bản đích đã chọn, breaking changes, yêu cầu toolchain và lý do giữ một dependency nếu bản mới không tương thích.
+- Xác minh cả SQLite engine thực sự được link/chạy bằng sqlite_version(), không chỉ nhìn version crate.
+- Kiểm tra các bản vá an toàn dữ liệu của SQLite, đặc biệt WAL/concurrent writer theo tài liệu hiện hành.
+
+Giữ major ổn định nếu lên major khác làm thay đổi dữ liệu/định danh hoặc cần tái viết không thuộc phạm vi. Nếu major mới có đường nâng cấp rõ và kiểm thử đạt, có thể nâng sau staging.
+Cập nhật lockfiles theo package manager hiện có; build reproducible. Không ép toàn bộ bằng npm audit fix --force hoặc ghi @latest vào mọi dependency.
+Không gỡ toàn bộ công cụ đang dùng hoặc tự cập nhật Codex toàn máy chỉ để xây CLI của ứng dụng.
+Provider/model AI có thể cấu hình; kiểm tra model đang được tài khoản/API hỗ trợ. Không chọn model chưa được cung cấp hoặc tự mở gói trả phí.
+Thiếu mạng tra cứu thì không khẳng định “mới nhất”; ghi rõ chưa xác minh, tiếp tục phần tính năng với dependency đã kiểm tra được.
+Chọn số phiên bản release lớn hơn bản cài hiện tại theo semver và cách installer so sánh version; đồng bộ metadata frontend, Rust và installer. Không đoán số trước khi đọc repo.
+
+15. BẮT BUỘC BẢO TOÀN CÔNG VIỆC ĐANG CÓ TRÊN NOTE
+
+Đây là điều kiện nghiệm thu ưu tiên cao nhất. Không mất task đang làm, task chưa xong, ghi chú, lịch hẹn, lịch lặp, trạng thái hoãn hoặc cài đặt trong quá trình nâng cấp.
+Không dùng dữ liệu demo để thay database thật. Không drop/recreate/reset database hoặc khởi tạo DB rỗng khi migration thất bại.
+Không gỡ bản cũ trước rồi cài app trắng; dùng nâng cấp tại chỗ sau khi kiểm chứng.
+
+15.1. Xác định nguồn dữ liệu thật
+Phân biệt source root, install directory và user data directory. Đọc config/path resolver/code để biết app đang dùng DB nào, dưới Windows user/profile nào.
+Giữ nguyên app identifier, đường dẫn dữ liệu, tên database và khóa định danh installer đang dùng khi phù hợp. Đổi tên app/exe không được làm chuyển sang database rỗng.
+Không chạy bản nâng cấp bằng profile administrator khác rồi tưởng dữ liệu của người dùng bị mất.
+Nếu source đang dùng JSON/localStorage/IndexedDB thay vì SQLite: backup và kiểm kê nguồn đó trước; di chuyển có mapping và đối soát đầy đủ, không bỏ qua vì khác tài liệu V1.
+Bảo toàn ghi chú chưa submit, ô đang gõ và draft form: dùng cơ chế flush/export UI hoặc lưu draft cục bộ bền trước khi đóng. Nếu không có cách xác minh phần chưa lưu, nêu rõ cần người dùng lưu phần đó; chưa đóng app làm mất draft.
+Không cần đưa các nội dung task cá nhân vào báo cáo công khai; báo cáo có thể dùng ID, hash và số lượng.
+
+15.2. Backup nhất quán trước thay đổi
+Tạo thư mục backup có timestamp nằm ngoài vùng installer sẽ ghi đè. Tên và path phải được xác minh, không hardcode máy của người khác.
+SQLite đang chạy: dùng Online Backup API hoặc VACUUM INTO ra file mới qua thư viện hỗ trợ, sau khi xác minh API phù hợp. Không chỉ copy file .db khi WAL còn có giao dịch.
+Nếu buộc dùng file copy: phải flush/đóng kết nối sạch, giữ dữ liệu journal/WAL đúng quy tắc và kiểm chứng bản backup. Không tự xóa -wal/-shm để “sửa lỗi”.
+Backup source/lockfiles/config, user DB, attachment nếu có, UI draft và cài đặt. Không export khóa API ra plaintext; giữ tham chiếu kho bí mật và bảo toàn quyền truy cập.
+Ghi manifest: đường dẫn nguồn/backup, app/schema version, thời điểm, snapshot revision, size/hash và kết quả kiểm tra.
+Mở bản backup độc lập để kiểm tra integrity_check/foreign_key_check, đọc được task và đối chiếu snapshot cùng thời điểm.
+Có JSON export versioned để dễ kiểm tra, nhưng không coi JSON thiếu trường là bản backup thay thế DB đầy đủ.
+Thiếu dung lượng/backup lỗi/DB chưa rõ nguồn: chưa thay bản đang chạy; sửa blocker trước.
+
+15.3. Đối soát theo từng bản ghi
+Lưu snapshot các trường cũ cần giữ nguyên: ID, title, description/checklist, ngày/giờ, trạng thái todo/doing/done, ưu tiên, completed_at, recurrence/template/occurrence, parent/project, snoozed_until, archived/deleted, created_at, cài đặt và lịch sử cần thiết.
+So sánh theo ID + giá trị/hash đã chuẩn hóa; tổng số task bằng nhau chưa đủ.
+Nếu migration đổi cấu trúc, mapping tường minh sang dữ liệu mới và kiểm chứng tương đương. Các trường mới dùng default; không sửa hạn hoặc trạng thái cũ chỉ để schema khớp.
+Cho phép thay đổi metadata migration riêng đã mô tả, không dùng nó để che mất nội dung.
+Không log nội dung task nhạy cảm chỉ để đối chiếu.
+App còn chạy trong lúc build có thể sinh thêm chỉnh sửa; snapshot đầu chỉ là checkpoint, không đủ để cutover.
+
+15.4. Staging, migration và thay bản đang chạy
+Build/test với bản sao DB, data root/identifier dev riêng và autostart/notification tắt trong test; không thử xóa/hoãn bằng task thật.
+Kiểm thử upgrade trên bản sao trước. Migration versioned, idempotent khi retry, có transaction cho phần được hỗ trợ; chỉ một process được migrate.
+Khi build/tests đạt và chuẩn bị cutover:
+1) Thông báo đang chuyển bản; flush các thay đổi UI/draft.
+2) Tạm chặn ghi mới có kiểm soát, chờ transaction đang chạy hoàn tất; đóng app sạch hoặc dùng maintenance lock phù hợp.
+3) Tạo BACKUP CUỐI mới nhất và đối soát lại dữ liệu tại thời điểm chuyển. Không dùng snapshot cũ làm mất task mới phát sinh trong thời gian build.
+4) Nâng bản tại chỗ, giữ data root/identifier, chạy migration đã kiểm chứng.
+5) Mở app dưới đúng người dùng; xác minh task đang làm, hoãn nhắc, ghi chú và CLI dùng đúng cùng DB.
+6) Chạy smoke test chỉ đọc và thao tác được kiểm soát; kiểm tra autostart/tray/scheduler một tiến trình.
+7) Cho phép ghi trở lại sau khi đối soát đạt.
+
+Có thể cần khởi động lại ngắn để thay binary; không hứa hot upgrade nếu chưa có cơ chế. Khởi động lại không được làm mất nội dung đang làm.
+Nếu không thể lấy lock/flush/backup cuối, giữ bản đang chạy và bàn giao installer/code đã kiểm thử với blocker cụ thể.
+
+15.5. Rollback không làm mất dữ liệu mới
+Giữ binary/source/DB backup của bản cũ và hướng dẫn quay lại.
+Chỉ tự rollback DB về snapshot trước nâng cấp nếu chứng minh chưa có ghi mới sau cutover.
+Nếu người dùng đã thêm/chỉnh task trong bản mới: backup trạng thái mới trước, dùng phương án tương thích ngược hoặc bảo toàn/merge dữ liệu với kiểm chứng; không restore snapshot cũ đè lên task mới.
+Không mở bản cũ với schema mới chưa tương thích. Khi chưa có rollback an toàn, ưu tiên giữ dữ liệu và báo lỗi để sửa tiếp.
+Lỗi migration không được âm thầm tạo DB khác để app có vẻ mở bình thường.
+
+16. SỬA CHỨC NĂNG XÓA VÀ TẠM HOÃN
+
+Người dùng phản ánh có chỗ không xóa/hoãn được. Trước sửa, tái hiện với dữ liệu thử và theo dõi đủ đường đi:
+nút/menu -> handler -> IPC -> backend -> transaction -> event -> UI -> scheduler.
+Kiểm tra menu bị che, disabled sai, click propagation/drag region, sai ID, lỗi permission, callback không chạy, migration thiếu trường, stale cache và optimistic update không rollback.
+Không chỉ thêm một nút mới lên một luồng backend đang hỏng.
+
+16.1. “Xóa việc”
+- Có trên từng task trong Sticky Note, chi tiết và dashboard; thao tác được cả task todo/doing/done.
+- Xóa mềm vào Thùng rác, ẩn khỏi danh sách đang làm, hủy thông báo hiệu lực; có Hoàn tác và Khôi phục.
+- Dùng tên “Xóa việc”, không gọi thao tác bỏ hoãn là xóa.
+- Xóa mềm rõ ràng qua UI hoặc CLI có ID là yêu cầu thực hiện; không bắt người dùng xác nhận qua nhiều lớp. Xóa vĩnh viễn/tất cả cần preview + xác nhận riêng.
+- Task đang doing chỉ được đưa vào thùng rác khi người dùng chủ động chọn xóa; nâng cấp không tự xóa.
+- Giữ lịch sử, tham chiếu mục tiêu và quyền phục hồi; AI không tái tạo lại bước người dùng đã xóa.
+- Lịch lặp: hỏi/chọn scope rõ “Lần này” hoặc “Lần này và các lần sau”, không xóa lịch sử cũ vì xóa một occurrence.
+- Khôi phục vẫn dùng ID cũ, không tạo trùng. Nếu snooze cũ đã hết hạn, không để task kẹt ở badge hoãn.
+
+16.2. “Tạm hoãn nhắc”
+- Chọn 15/30/60 phút hoặc thời điểm cụ thể; hiển thị đang hoãn đến lúc nào.
+- Chỉ tạm ngưng nhắc cho task, không đổi due_at/ngày hạn gốc và không đánh dấu hoàn thành.
+- Lưu snooze bền qua restart; scheduler, hourly summary và UI thống nhất: task còn trên Note với badge, không đưa thành lời nhắc cần làm ngay trong thời gian đang hoãn.
+- Nếu chưa đủ điều kiện hoãn (đã xóa/hoàn thành), báo đúng trạng thái, không làm UI như đã thành công.
+- Hết thời gian hoãn thì tự kết thúc badge/điều kiện chặn hiệu lực và phục hồi nhắc tương lai trong khung 08:00–18:00.
+
+16.3. “Bỏ tạm hoãn” — YÊU CẦU MỚI BẮT BUỘC
+- Hiện ngay trên task đang hoãn, trong danh sách “Đang tạm hoãn” và menu task.
+- Click một lần -> backend xóa/clear thời điểm hoãn -> lưu -> event -> task trở về danh sách làm việc/nhắc bình thường.
+- Giữ nguyên ID, nội dung, deadline, mức ưu tiên và trạng thái doing/todo trước đó.
+- Nếu phiên bản cũ dùng status=paused, khôi phục previous_status đã lưu. Nếu dữ liệu cũ không đủ xác định, dùng mapping rõ ràng và báo trong migration; không đoán mọi việc thành doing.
+- Không xóa task, không xóa ghi chú, không tự đánh dấu done, không sửa giờ hẹn.
+- Task quá hạn sau khi bỏ hoãn: vẫn là quá hạn, có thể hiện nhắc tổng hợp thích hợp; không tạo lại tất cả reminder đã bỏ qua.
+- Không xóa notification history để gửi lại toast ở mốc cũ. Tính reminder tương lai từ thời điểm hiện tại.
+- Nếu bấm lặp hoặc task chưa hoãn: idempotent, trả “Việc này không còn tạm hoãn”.
+- Task đã xóa/done không được tái kích hoạt reminder do một lệnh bỏ hoãn cũ.
+- Nếu UI bị kẹt “đang hoãn” nhưng DB không còn snooze: sửa đồng bộ/derived state, không reset DB.
+
+16.4. Tạm dừng thông báo toàn ứng dụng
+Tách riêng trong Cài đặt/tray:
+“Tạm dừng thông báo” và “Bật lại thông báo”.
+Bật lại chỉ gỡ chế độ pause toàn app, không gỡ snooze của mọi task.
+Bỏ hoãn một task không bật lại chế độ pause toàn app.
+Giữ giờ yên lặng, quyền Windows và lịch V1. Không có toast sau 18:00.
+Có thể thấy rõ “Thông báo đang tạm dừng” ngay cả khi task đã bỏ hoãn.
+Không thêm trạng thái “tạm dừng công việc” khác vào phạm vi nếu chưa cần cho source; mục tiêu hiện tại là quản lý nhắc và bỏ hoãn.
+
+17. THÊM CLI RIÊNG CHO TASK NOTE AI
+
+CLI quản lý ứng dụng, không phải thay thế Codex CLI và không chỉ là cửa sổ Terminal giả trong UI.
+Tạo binary tasknote.exe dùng được trong PowerShell/Windows Terminal/cmd. Dùng parser CLI phù hợp Rust/stack hiện có, có --help và thông báo tiếng Việt.
+Nếu tên đã bị trùng với chương trình khác, chọn alias rõ và báo tên thực; không ghi đè chương trình khác.
+
+Thiết kế tối thiểu, triển khai thật và kiểm tra từng lệnh:
+tasknote --help
+tasknote version
+tasknote doctor --json
+tasknote status --json
+tasknote open
+tasknote task list --today
+tasknote task list --date 2026-10-15 --status doing --json
+tasknote task show <id>
+tasknote task add --title "Kiểm tra cẩm nang" --date today
+tasknote task add --title "Gọi khách" --date tomorrow --time 09:00
+tasknote task update <id> --title "Kiểm tra lại cẩm nang" --status doing
+tasknote task update <id> --date 2026-10-15 --time 14:00 --dry-run
+tasknote task complete <id>
+tasknote task reopen <id>
+tasknote task snooze <id> --for 30m
+tasknote task snooze <id> --until "2026-10-15T09:00:00+07:00"
+tasknote task unsnooze <id>
+tasknote task delete <id>
+tasknote task trash list --json
+tasknote task restore <id>
+tasknote notifications pause --for 60m
+tasknote notifications resume
+tasknote backup create --output "D:\TaskNoteBackups"
+tasknote backup verify "<duong-dan-backup>"
+tasknote ai chat "Hôm nay thêm việc kiểm tra logo"
+tasknote ai plan --date today --dry-run
+
+Các path/ngày/ID trong ví dụ chỉ là minh họa; không tự chạy mutation bằng những giá trị này lên task thật.
+“today/tomorrow” dùng múi giờ app, không tự dùng UTC của terminal.
+Nếu task có giờ mà thiếu ngày thì default today được hiển thị rõ.
+Trùng short ID/không tồn tại: lỗi có hướng dẫn chọn ID chính xác, không sửa nhầm.
+Hỗ trợ --scope occurrence|future khi tác động lịch lặp; nếu chưa rõ scope thì chưa mutate.
+Không bắt nhập lại tên dài khi ID chính xác đã có.
+Giữ các lệnh AI cũ và quy tắc rõ/mơ hồ: lệnh trực tiếp với ID chính xác có thể mutate không qua LLM; AI không có quyền rộng hơn CLI core.
+
+Chất lượng CLI:
+- Cùng quy tắc CRUD/delete/snooze/unsnooze với UI; không có DB riêng hoặc trạng thái riêng.
+- --json: stdout chỉ một JSON hợp lệ có schema_version, ok, data hoặc error với code/message; log/progress ra stderr.
+- --dry-run cho mutation: hiển thị thay đổi dự kiến, không ghi DB hoặc scheduling; có thể gọi provider nếu đó là việc cần mô hình và có quyền AI, nhưng không lưu task.
+- Exit codes ổn định và tài liệu hóa: 0 thành công, 2 input sai, 3 không tìm thấy, 4 IPC/DB lỗi, 5 lựa chọn mơ hồ, 6 thiếu quyền/cấu hình cần thiết, 7 AI chưa sẵn sàng.
+- Unicode tiếng Việt, title có dấu/space/quote, path có khoảng trắng và timezone hoạt động.
+- Retry cần request ID và chống duplicate với mutation; --request-id cho thao tác có thể tự động hóa.
+- Không truyền khóa API qua command arguments để lộ trong process/history; cấu hình qua UI/kho bí mật hiện có.
+- Không hỗ trợ raw SQL/shell, purge/reset toàn bộ hoặc restore đè DB một cách ngầm định.
+- doctor chỉ đọc/kiểm tra, không tự sửa phá dữ liệu.
+
+CLI và app đang chạy:
+Ưu tiên local IPC tới core đang giữ dữ liệu/scheduler. Windows named pipe hoặc cơ chế tương đương giới hạn current user/session; không mở server công khai.
+Core kiểm tra action, commit và emit event để Note thay đổi ngay.
+Khi GUI chưa chạy, CLI có thể khởi tạo core headless cho một lệnh dưới cùng lock/phạm vi user rồi thoát; không tự bật scheduler thứ hai hoặc cửa sổ Note bất ngờ.
+Khi GUI khởi động đồng thời, coordinator/lock bảo đảm chỉ một mutation owner, migration và scheduler.
+Nếu kiến trúc khác được chọn, phải chứng minh đồng bộ UI, transaction, version conflict và số scheduler không trùng. Không mở hai writer độc lập rồi hy vọng DB khóa là đủ để UI đồng bộ.
+CLI không chạy nền sau khi lệnh xong trừ khi người dùng chủ động mở app.
+Lệnh đơn lẻ lúc app đang thoát phải xử lý timeout/retry có giới hạn, không treo hoặc ghi trùng.
+
+Doctor/status tối thiểu: app version, schema/SQLite runtime version, data path thực, số task theo trạng thái, current timezone, core/scheduler running, notification pause, số task đang hoãn, AI provider trạng thái đã che bí mật, backup cuối và kết quả kiểm tra.
+Không gửi dữ liệu doctor lên server mặc định.
+
+Đóng gói CLI cùng installer. README chỉ đúng executable path, lệnh dùng ngay.
+Có thể đăng ký alias/user PATH trong cài đặt khi nằm trong quyền cho phép; idempotent, không xóa giá trị PATH cũ hoặc sửa system PATH tùy tiện.
+Nếu PATH chưa được cập nhật trong terminal hiện tại, nêu cách mở terminal mới hoặc dùng đường dẫn executable đầy đủ.
+Nút “Sao chép lệnh CLI” ở chi tiết task là bổ sung hữu ích nếu không cản bàn giao core.
+
+18. KIỂM THỬ NÂNG CẤP, CLI VÀ CÁC NÚT ĐANG LỖI
+
+Bổ sung các case này vào nghiệm thu mục 11; test dữ liệu thử, không mutate task thật để có bằng chứng:
+A) DB trước nâng cấp có todo/doing/done, note, checklist, snooze, task overdue, recurrence, deleted, settings và draft: nâng cấp giữ các trường cũ theo ID; integrity/foreign keys đạt.
+B) Task mới/chỉnh sửa trong thời gian build: có trong backup cuối và sau cutover.
+C) Backup DB đang chạy có WAL: restore ra profile test chứa giao dịch đã commit mới nhất tại snapshot; không chỉ khớp số hàng.
+D) Migration fail giữa chừng/restart, DB lock, thiếu dung lượng: DB thật không bị reset, không sinh app data directory mới.
+E) Chạy dưới admin hoặc đổi identifier ngoài ý muốn: phát hiện sai data root, không báo dữ liệu trống như bình thường.
+F) Rollback có/không có writes sau cutover: bảo toàn dữ liệu mới, không restore mù.
+G) Sticky Note -> Xóa việc: task mất khỏi danh sách active sau commit, nằm Trash; reminder bị hủy; Undo/Restore lấy đúng ID.
+H) Xóa occurrence lịch lặp: không mất lần cũ/cả chuỗi ngoài scope.
+I) Hoãn 30 phút -> bỏ hoãn trước hạn: deadline/status không đổi, reminder tương lai được tính lại; restart không giữ badge sai.
+J) Bỏ hoãn task overdue/outside quiet hours: không bắn bù hoặc toast sau 18:00.
+K) Notification pause toàn app + task snooze: resume và unsnooze độc lập; không bật nhầm các chế độ.
+L) Bấm bỏ hoãn hai lần, bỏ hoãn task done/deleted, task bị sửa ở cửa sổ khác: idempotent, không hồi sinh reminder sai.
+M) CLI add/update/complete/snooze/unsnooze/delete/restore khi GUI mở: Note cập nhật ngay sau commit; cùng DB, đúng task và chỉ một scheduler.
+N) CLI khi GUI tắt rồi mở, hai lệnh đồng thời, race CLI/GUI startup: không mất ghi hoặc tạo hai process sở hữu scheduler.
+O) --json parse được, stdout không lẫn log; dry-run không mutation; exit codes đúng; Unicode/path có space/invalid date/ID trùng được xử lý.
+P) CLI backup create/verify: backup mở được, hiện path đúng; doctor không mutation; thiếu AI key chỉ chặn lệnh suy luận.
+Q) Installer upgrade bản cũ trên Windows với profile thử: giữ dữ liệu, autostart đúng executable mới, CLI chạy, không có shortcut/tray/scheduler trùng.
+R) Bản cài thực: native notifications, hide-to-tray, sleep/resume, đóng/mở app và các nút lỗi ban đầu đều qua smoke test.
+
+Các case không thể chạy do môi trường/khóa/quyền phải ghi BLOCKED và nguyên nhân. Không dùng test mock để nhận đã thử installed Windows build.
+Có thể dùng profile test để chứng minh migration/installer trước khi thao tác dữ liệu thật; đừng bật toast/autostart của profile test vào phiên người dùng.
+Không chỉ kiểm tra build pass rồi tuyên bố hết lỗi.
+Dữ liệu thật trước/sau chỉ đối soát đọc; thử mutation trên task thật chỉ khi chính người dùng yêu cầu thao tác cụ thể.
+
+19. QUY TRÌNH TỰ TRIỂN KHAI BẮT BUỘC
+
+Được người dùng yêu cầu tự sửa và nâng cấp, hãy thực hiện đến kết quả chạy được trong phạm vi quyền hiện có. Không hỏi lại các lựa chọn routine đã có default trong prompt.
+
+1) Tìm đúng source/app/data; kiểm tra Git và môi trường, ghi discovery.
+2) Tái hiện xóa/hoãn hỏng trên profile test; lập version audit theo nguồn chính thức.
+3) Backup/checkpoint thật và kiểm chứng; tạo DB staging riêng.
+4) Sửa luồng CRUD/snooze/unsnooze; triển khai CLI dùng chung core.
+5) Hoàn thiện AI chat tự thêm việc/lập kế hoạch theo mục 1–12; không bỏ tính năng AI đã giao ở lượt trước.
+6) Chạy kiểm thử phù hợp và đối soát migration staging; sửa đến khi đạt.
+7) Build release/installer chứa cả GUI và CLI; thử installed build trên profile test Windows.
+8) Khi điều kiện bảo toàn dữ liệu đạt và có quyền thực hiện, nâng cấp tại chỗ theo backup cuối + cutover mục 15.
+9) Mở app đúng profile, đối soát read-only công việc hiện tại; smoke test, đưa người dùng về Note có đúng task.
+10) Bàn giao file, báo cáo và hướng dẫn CLI ngắn.
+
+Nếu môi trường hiện tại không phải Windows hoặc không được truy cập source/dữ liệu thật:
+Vẫn hoàn thiện code/tests/packaging có thể làm, nêu phần không kiểm chứng, không tự nhận đã nâng trên laptop.
+Nếu source thiếu hoặc nhiều ứng viên mơ hồ, không tạo repo mới thay repo cũ. Chỉ hỏi thông tin tối thiểu để tiếp tục mục 13.
+Không yêu cầu người dùng tự sửa từng file hay tự làm mọi bước nếu Codex đã có quyền và đủ thông tin.
+Không tự tạo automation ChatGPT/cloud để thay thế scheduler desktop.
+
+20. BÀN GIAO VÀ TIÊU CHÍ KẾT THÚC
+
+Bàn giao trong repository hoặc thư mục output đã xác minh:
+- Mã nguồn nâng cấp, migration và lockfiles.
+- Installer GUI mới và tasknote.exe thực tế nếu build thành công.
+- PROJECT_DISCOVERY.md, VERSION_AUDIT.md, DATA_PRESERVATION_REPORT.md, TEST_REPORT.md.
+- DATA_PRESERVATION_REPORT nêu backup cuối, các trường đã so sánh theo ID, khác biệt cho phép, lỗi còn lại và kết quả task đang làm được giữ nguyên. Che nội dung nhạy cảm.
+- README tiếng Việt: cài/nâng, chạy CLI, tìm ID, xóa/restore, snooze/unsnooze, resume toàn app, bật AI, backup và rollback.
+- CLI_QUICKSTART.md có các lệnh copy dùng với executable/alias thực.
+- CHANGELOG/IMPLEMENTATION_LOG nêu vấn đề xóa/hoãn đã sửa và version thực.
+- Backup đã xác minh và hướng dẫn phục hồi, không đóng gói khóa API vào artifact.
+
+Chỉ báo hoàn tất khi:
+- Các thao tác xóa, hoãn, bỏ hoãn và CLI thực sự hoạt động.
+- Dữ liệu cũ còn nguyên theo đối soát, task đang doing vẫn đúng trạng thái.
+- Note, dashboard, chat và CLI thống nhất.
+- Scheduler/notification V1 hoạt động đúng khung 08:00–18:00.
+- Tính năng AI không giả lập thành kết quả thật.
+- Installed Windows build được thử hoặc ghi rõ chưa thể thử; “code đã xong” và “đã nâng trên máy” là hai trạng thái khác nhau.
+
+Báo cáo cuối bằng tiếng Việt:
+(1) Đường dẫn dự án/data đã xác minh; (2) Bản cũ -> bản mới thực tế; (3) Các chức năng mới; (4) Backup/đối soát; (5) Kiểm thử pass/fail/blocked; (6) File cài/CLI và 5 lệnh thường dùng.
+Không đưa khóa API hoặc nguyên văn task cá nhân vào báo cáo.
+
+Nguồn kỹ thuật chính thức để kiểm tra khi triển khai (đã đối chiếu ngày 14/10/2026; kiểm tra lại khi chạy):
+- SQLite backup: https://sqlite.org/backup.html
+- SQLite WAL và tương thích/bản vá: https://sqlite.org/wal.html
+- Tauri app data path/identifier: https://v2.tauri.app/reference/javascript/api/namespacepath/
+- Tauri cấu hình: https://v2.tauri.app/reference/config/
+- Codex directory/permission/CLI: https://learn.chatgpt.com/docs/developer-commands?surface=cli
+
+BẮT ĐẦU NGAY: tìm đúng dự án và dữ liệu hiện tại, báo đường dẫn đã xác minh, backup trước thay đổi, rồi triển khai nâng cấp + CLI + xóa/hoãn/bỏ hoãn. Giữ nguyên công việc đang có trên Note.
+

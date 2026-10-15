@@ -1,0 +1,40 @@
+[package]
+name = "task-note-ai"
+version = "2.0.0"
+description = "Task Note AI – trợ lý công việc offline"
+authors = ["Task Note AI"]
+edition = "2021"
+rust-version = "1.94"
+
+[lib]
+name = "task_note_ai_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-notification = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-window-state = "2"
+tauri-plugin-dialog = "2"
+task-note-core = { path = "task-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+chrono = "0.4"
+tokio = { version = "1", features = ["time", "sync"] }
+
+[target.'cfg(windows)'.dependencies]
+auto-launch = "0.6"
+windows = { version = "0.62", features = ["UI_Notifications", "Data_Xml_Dom", "Win32_System_WinRT", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+[workspace]
+members = ["task-core"]
+
+# Windows desktop links this Rust library into its executable; no mobile FFI
+# libraries are distributed. Keep application macro-heavy code cheap to build.
+[profile.release.package.task-note-ai]
+opt-level = 1

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+target/
+src-tauri/target/
+.tools/
+artifacts/*
+!artifacts/MANIFEST-V2.json
+*.sqlite*
+*.log
+artifacts/preservation/
+artifacts/test-profile*/
+artifacts/staging*/
